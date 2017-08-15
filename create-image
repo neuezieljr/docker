@@ -1,0 +1,67 @@
+#!/bin/bash
+DISTRIBUTION=$(lsb_release -is | tr "[:upper:]" "[:lower:]")
+CODENAME=$(lsb_release -cs)
+ARCH=$([[ "$(uname -p)" = "x86_64" ]] && echo amd64 || echo i386)
+BINARY="iso-hybrid"
+WORKING="$(pwd)/live-build/$(date +%Y-%m-%d)-01"
+CONFIG=
+CLEAN=false
+
+die() { echo $@; exit 255; }
+
+load_config()
+{
+    source $CONFIG
+}
+
+while [ "$1" ];
+do
+    case "$1" in
+        -d|--distribution)
+            shift
+            DISTRIBUTION=$1
+        ;;
+        -c|--codename)
+            shift
+            CODENAME=$1
+        ;;
+        -a|--architecture)
+            shift
+            ARCH=$1
+        ;;
+        -b|--binary)
+            shift
+            BINARY=$1
+        ;;
+        --config)
+            shift
+            CONFIG=$1
+        ;;
+        --clean)
+            CLEAN=true
+        ;;
+    esac
+    shift
+done
+
+SYSLINX_THEME="$DISTRIBUTION-$CODENAME"
+
+[[ -n $CONFIG ]] && [[ -f $CONFIG ]] && load_config
+
+[[ $(id -u) -ne 0 ]] && die "Need root permission to run task"
+
+if [[ -d "$WORKING" ]]; then
+    _serial=$(echo $WORKING | awk -F- '{print $NF}')
+    WORKING=$(echo $WORKING | sed "s/0001/$(printf "%04d" $((0001+1)))/")
+fi
+
+mkdir -p "$WORKING"
+
+pushd "$WORKING"
+lb config -d $CODENAME -a $ARCH -b $BINARY --syslinux-theme $SYSLINX_THEME
+lb build
+popd
+
+ISONAME=$(file "$WORKING/chroot/binary.hybrid.iso" | sed "s/.*'\(.*\)'.*/\1/g" | sed -e 's/-.*//g' -e 's/ /_/g')
+mv "$WORKING/chroot/binary.hybrid.iso" "$WORKDIR/${ISONAME}.iso"
+$CLEAN && rm -fr "$WORKING"
